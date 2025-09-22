@@ -494,6 +494,26 @@
           .forEach((c) => c.classList.remove("selected"));
         card.classList.add("selected");
         selectedDriver = driver;
+
+        // Remove all other drivers from map when one is selected
+        driversMarkers.forEach((marker, index) => {
+          if (index !== 0) {
+            // Keep only the first driver (selected one)
+            map.removeLayer(marker);
+          }
+        });
+        // Keep only the selected driver marker
+        driversMarkers = [driversMarkers[0]];
+
+        // Hide other driver cards
+        document
+          .querySelectorAll(".driver-card")
+          .forEach((otherCard, index) => {
+            if (otherCard !== card) {
+              otherCard.style.display = "none";
+            }
+          });
+
         showStatus(`Selected ${driver.name}`, "success");
         bookRide();
       }
@@ -509,7 +529,12 @@
         }));
       }
 
-      async function moveDriverAlongRoute(driverMarker, routeCoords, callback) {
+      async function moveDriverAlongRoute(
+        driverMarker,
+        routeCoords,
+        callback,
+        movePickupMarkerToo = false,
+      ) {
         let i = 0;
         const total = routeCoords.length;
         function moveStep() {
@@ -518,6 +543,12 @@
             return;
           }
           driverMarker.setLatLng([routeCoords[i].lat, routeCoords[i].lng]);
+
+          // If this is the ride to destination, move pickup marker (user) with driver
+          if (movePickupMarkerToo && pickupMarker) {
+            pickupMarker.setLatLng([routeCoords[i].lat, routeCoords[i].lng]);
+          }
+
           i++;
           let delay = 100;
           if (Math.random() < 0.1) delay = 500 + Math.random() * 1500;
@@ -533,26 +564,39 @@
           "success",
         );
 
+        // Driver moving to pickup location
         const pickupRoute = await getRoute(
           { lat: selectedDriver.lat, lng: selectedDriver.lng },
           pickupMarker.getLatLng(),
         );
-        await moveDriverAlongRoute(driversMarkers[0], pickupRoute, async () => {
-          showStatus(
-            `${selectedDriver.name} reached pickup! Heading to destination...`,
-            "info",
-          );
-          const destRoute = await getRoute(
-            pickupMarker.getLatLng(),
-            destinationMarker.getLatLng(),
-          );
-          await moveDriverAlongRoute(driversMarkers[0], destRoute, () => {
+        await moveDriverAlongRoute(
+          driversMarkers[0],
+          pickupRoute,
+          async () => {
             showStatus(
-              `${selectedDriver.name} reached destination! Ride complete.`,
-              "success",
+              `${selectedDriver.name} reached pickup! Ride started - heading to destination...`,
+              "info",
             );
-          });
-        });
+
+            // Now driver and user travel together to destination
+            const destRoute = await getRoute(
+              pickupMarker.getLatLng(),
+              destinationMarker.getLatLng(),
+            );
+            await moveDriverAlongRoute(
+              driversMarkers[0],
+              destRoute,
+              () => {
+                showStatus(
+                  `${selectedDriver.name} reached destination! Ride complete.`,
+                  "success",
+                );
+              },
+              true,
+            ); // Pass true to move pickup marker (user) with driver
+          },
+          false,
+        ); // Pass false for pickup journey (user doesn't move yet)
       }
 
       window.onload = () => {
