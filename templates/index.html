@@ -50,6 +50,13 @@
         padding: 25px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
         overflow-y: auto;
+        opacity: 0;
+        transition: opacity 0.5s;
+        pointer-events: none;
+      }
+      .controls-panel.ready {
+        opacity: 1;
+        pointer-events: auto;
       }
       .map-container {
         background: white;
@@ -352,8 +359,7 @@
         pickupMarker,
         destinationMarker,
         driversMarkers = [],
-        selectedDriver = null,
-        routePolyline = null;
+        selectedDriver = null;
 
       function showStatus(msg, type = "info") {
         const el = document.getElementById("status");
@@ -369,7 +375,15 @@
           attribution: "© OpenStreetMap",
           maxZoom: 18,
         }).addTo(map);
-        document.getElementById("mapLoading").style.display = "none";
+        map.whenReady(() => {
+          document.getElementById("mapLoading").style.display = "none";
+          document.querySelector(".controls-panel").classList.add("ready");
+          map.invalidateSize();
+          showStatus(
+            "Map loaded! You can now choose pickup and destination.",
+            "success",
+          );
+        });
       }
 
       function createMarker(lat, lng, type = "pickup", label = "") {
@@ -397,13 +411,15 @@
           return;
         }
         showStatus(`Searching ${vehicle} rides...`, "info");
-        // Mock geocoding: random coords near Coimbatore
+
         const pickupLat = 11.0168 + Math.random() * 0.02 - 0.01;
         const pickupLng = 76.9558 + Math.random() * 0.02 - 0.01;
         const destLat = 11.0168 + Math.random() * 0.02 - 0.01;
         const destLng = 76.9558 + Math.random() * 0.02 - 0.01;
+
         if (pickupMarker) map.removeLayer(pickupMarker);
         if (destinationMarker) map.removeLayer(destinationMarker);
+
         pickupMarker = createMarker(pickupLat, pickupLng, "pickup", "P");
         destinationMarker = createMarker(destLat, destLng, "destination", "D");
         map.fitBounds(
@@ -413,6 +429,7 @@
           ],
           { padding: [50, 50] },
         );
+
         showDriversOnMap(vehicle);
       }
 
@@ -433,7 +450,6 @@
       }
 
       function showDriversOnMap(vehicleType) {
-        // remove old
         driversMarkers.forEach((m) => map.removeLayer(m));
         driversMarkers = [];
         const drivers = [];
@@ -452,9 +468,7 @@
           const card = document.createElement("div");
           card.className = "driver-card";
           card.innerHTML = `<div class="driver-info"><div class="driver-details"><h4>${driver.name}</h4><p>Vehicle: ${driver.vehicle}</p></div><div class="driver-meta"><div class="eta">ETA: ${driver.eta} min</div></div></div>`;
-          card.onclick = () => {
-            selectDriver(driver, card);
-          };
+          card.onclick = () => selectDriver(driver, card);
           driversList.appendChild(card);
           const marker = createMarker(
             driver.lat,
@@ -477,7 +491,6 @@
       }
 
       async function getRoute(start, end) {
-        // start/end are {lat,lng}
         const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
         const res = await fetch(url);
         const data = await res.json();
@@ -491,15 +504,18 @@
       async function moveDriverAlongRoute(driverMarker, routeCoords, callback) {
         let i = 0;
         const total = routeCoords.length;
-        const interval = setInterval(() => {
+        function moveStep() {
           if (i >= total) {
-            clearInterval(interval);
             if (callback) callback();
             return;
           }
           driverMarker.setLatLng([routeCoords[i].lat, routeCoords[i].lng]);
           i++;
-        }, 100); // adjust speed here
+          let delay = 100;
+          if (Math.random() < 0.1) delay = 500 + Math.random() * 1500;
+          setTimeout(moveStep, delay);
+        }
+        moveStep();
       }
 
       async function bookRide() {
@@ -509,7 +525,6 @@
           "success",
         );
 
-        // Fetch route to pickup first
         const pickupRoute = await getRoute(
           { lat: selectedDriver.lat, lng: selectedDriver.lng },
           pickupMarker.getLatLng(),
@@ -519,7 +534,6 @@
             `${selectedDriver.name} reached pickup! Heading to destination...`,
             "info",
           );
-          // Route to destination
           const destRoute = await getRoute(
             pickupMarker.getLatLng(),
             destinationMarker.getLatLng(),
@@ -531,27 +545,6 @@
             );
           });
         });
-      }
-
-      function animateMarker(marker, targetLatLng, callback) {
-        const frames = 50,
-          duration = 3000;
-        const startLatLng = marker.getLatLng();
-        let count = 0;
-        const deltaLat = (targetLatLng.lat - startLatLng.lat) / frames;
-        const deltaLng = (targetLatLng.lng - startLatLng.lng) / frames;
-        const interval = setInterval(() => {
-          if (count >= frames) {
-            clearInterval(interval);
-            if (callback) callback();
-            return;
-          }
-          marker.setLatLng([
-            startLatLng.lat + deltaLat * count,
-            startLatLng.lng + deltaLng * count,
-          ]);
-          count++;
-        }, duration / frames);
       }
 
       window.onload = initializeMap;
