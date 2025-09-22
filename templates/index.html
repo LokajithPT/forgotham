@@ -4,16 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QuickRide - Your ride is just a click away!</title>
-    <!-- Preload critical resources -->
-    <link rel="preconnect" href="https://unpkg.com" />
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
-    <link rel="preconnect" href="https://tile.openstreetmap.org" />
-    <!-- Leaflet CSS -->
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
-    <!-- Font Awesome -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
@@ -25,7 +19,7 @@
         box-sizing: border-box;
       }
       body {
-        font-family: "Arial", sans-serif;
+        font-family: Arial, sans-serif;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
       }
@@ -68,8 +62,6 @@
         height: 100%;
         width: 100%;
       }
-
-      /* Map loading overlay */
       .map-loading {
         position: absolute;
         top: 0;
@@ -85,7 +77,6 @@
         z-index: 1000;
         border-radius: 15px;
       }
-
       .loading-spinner {
         width: 50px;
         height: 50px;
@@ -95,7 +86,6 @@
         animation: spin 1s linear infinite;
         margin-bottom: 20px;
       }
-
       @keyframes spin {
         0% {
           transform: rotate(0deg);
@@ -104,7 +94,6 @@
           transform: rotate(360deg);
         }
       }
-
       .input-group {
         margin-bottom: 20px;
       }
@@ -250,8 +239,6 @@
       .status.info {
         background-color: #2196f3;
       }
-
-      /* Custom marker styles */
       .custom-marker {
         background-color: #667eea;
         width: 30px;
@@ -266,33 +253,26 @@
         font-weight: bold;
         font-size: 12px;
       }
-
       .pickup-marker {
         background-color: #4caf50;
       }
-
       .destination-marker {
         background-color: #f44336;
       }
-
       .driver-marker {
         width: 25px;
         height: 25px;
         font-size: 10px;
       }
-
       .driver-marker.bike {
         background-color: #ff6b35;
       }
-
       .driver-marker.auto {
         background-color: #4ecdc4;
       }
-
       .driver-marker.car {
         background-color: #2196f3;
       }
-
       @media (max-width: 768px) {
         .main-content {
           grid-template-columns: 1fr;
@@ -315,15 +295,15 @@
       <div class="main-content">
         <div class="controls-panel">
           <div class="input-group">
-            <label for="pickup">
-              <i class="fas fa-map-marker-alt"></i> Pickup Location
-            </label>
+            <label for="pickup"
+              ><i class="fas fa-map-marker-alt"></i> Pickup Location</label
+            >
             <input type="text" id="pickup" placeholder="Enter pickup address" />
           </div>
           <div class="input-group">
-            <label for="destination">
-              <i class="fas fa-flag-checkered"></i> Destination
-            </label>
+            <label for="destination"
+              ><i class="fas fa-flag-checkered"></i> Destination</label
+            >
             <input
               type="text"
               id="destination"
@@ -331,9 +311,9 @@
             />
           </div>
           <div class="input-group">
-            <label for="vehicleType">
-              <i class="fas fa-car"></i> Vehicle Type
-            </label>
+            <label for="vehicleType"
+              ><i class="fas fa-car"></i> Vehicle Type</label
+            >
             <select id="vehicleType">
               <option value="bike">Bike (₹8/km)</option>
               <option value="auto">Auto (₹12/km)</option>
@@ -364,704 +344,217 @@
         </div>
       </div>
     </div>
-
     <div class="status" id="status"></div>
 
-    <!-- Load scripts at the end for faster page load -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-      // Show loading initially
-      let mapLoaded = false;
+      let map,
+        pickupMarker,
+        destinationMarker,
+        driversMarkers = [],
+        selectedDriver = null,
+        routePolyline = null;
 
-      // Initialize map loading state
-      function initializeApp() {
-        // Enable buttons initially (they'll work even without map)
-        showStatus("App loaded! Map is loading in background...", "info");
-
-        // Load map asynchronously
-        loadMapAsync();
+      function showStatus(msg, type = "info") {
+        const el = document.getElementById("status");
+        el.className = `status ${type}`;
+        el.textContent = msg;
+        el.style.display = "block";
+        setTimeout(() => (el.style.display = "none"), 4000);
       }
 
-      // Async map loading
-      function loadMapAsync() {
-        // Create script element for Leaflet
-        const leafletScript = document.createElement("script");
-        leafletScript.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        leafletScript.onload = function () {
-          initializeMap();
-        };
-        leafletScript.onerror = function () {
-          handleMapLoadError();
-        };
-        document.head.appendChild(leafletScript);
-      }
-
-      // Initialize map once Leaflet is loaded
       function initializeMap() {
-        try {
-          // Initialize map with Leaflet
-          window.map = L.map("map", {
-            preferCanvas: true, // Better performance
-            zoomControl: true,
-            attributionControl: true,
-          }).setView([11.0168, 76.9558], 12); // Coimbatore
-
-          // Use faster tile server with more concurrent requests
-          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution: "© OpenStreetMap",
-            maxZoom: 18,
-            subdomains: ["a", "b", "c"], // Load from multiple subdomains for speed
-            detectRetina: true,
-            maxNativeZoom: 18,
-          }).addTo(window.map);
-
-          // Hide loading overlay once first tiles start loading
-          window.map.on("tileloadstart", function () {
-            if (!mapLoaded) {
-              document.getElementById("mapLoading").style.display = "none";
-              mapLoaded = true;
-              showStatus(
-                "Map loaded successfully! Click to set pickup location.",
-                "success",
-              );
-              initializeMapFeatures();
-            }
-          });
-
-          // Fallback: hide loading after 5 seconds even if tiles don't load
-          setTimeout(() => {
-            if (!mapLoaded) {
-              document.getElementById("mapLoading").style.display = "none";
-              mapLoaded = true;
-              showStatus("Map loaded! You can use the app now.", "info");
-              initializeMapFeatures();
-            }
-          }, 5000);
-        } catch (error) {
-          console.error("Map initialization error:", error);
-          handleMapLoadError();
-        }
+        map = L.map("map").setView([11.0168, 76.9558], 12);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap",
+          maxZoom: 18,
+        }).addTo(map);
+        document.getElementById("mapLoading").style.display = "none";
       }
 
-      // Handle map loading errors
-      function handleMapLoadError() {
-        document.getElementById("mapLoading").innerHTML = `
-          <div style="text-align: center;">
-            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px;"></i>
-            <h3>Map Loading Failed</h3>
-            <p>The app still works! Use coordinates instead.</p>
-            <button class="btn" onclick="location.reload()" style="margin-top: 15px;">
-              <i class="fas fa-refresh"></i> Retry
-            </button>
-          </div>
-        `;
-        showStatus(
-          "Map failed to load, but app functions are still available.",
-          "warning",
-        );
+      function createMarker(lat, lng, type = "pickup", label = "") {
+        const div = document.createElement("div");
+        div.className = "custom-marker";
+        if (type === "pickup") div.classList.add("pickup-marker");
+        if (type === "destination") div.classList.add("destination-marker");
+        if (type === "driver") div.classList.add("driver-marker");
+        div.textContent = label;
+        return L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: "",
+            html: div.outerHTML,
+            iconSize: [30, 30],
+          }),
+        }).addTo(map);
       }
 
-      // Initialize map features once map is ready
-      function initializeMapFeatures() {
-        // Global variables
-        window.pickupMarker = null;
-        window.destinationMarker = null;
-        window.driversMarkers = [];
-        window.selectedDriver = null;
-        window.routePolyline = null;
-
-        // Handle map clicks
-        window.map.on("click", handleMapClick);
-      }
-
-      // Handle map clicks
-      function handleMapClick(e) {
-        if (!window.map) {
-          showStatus("Map not loaded yet. Please wait.", "warning");
+      function findRide() {
+        const pickup = document.getElementById("pickup").value.trim();
+        const destination = document.getElementById("destination").value.trim();
+        const vehicle = document.getElementById("vehicleType").value;
+        if (!pickup || !destination) {
+          showStatus("Enter both pickup and destination!", "error");
           return;
         }
-
-        const coords = e.latlng;
-
-        if (!window.pickupMarker) {
-          // Set pickup location
-          window.pickupMarker = L.marker([coords.lat, coords.lng], {
-            icon: createCustomMarker("pickup", "P"),
-          })
-            .addTo(window.map)
-            .bindPopup("Pickup Location");
-
-          updateAddress("pickup", coords);
-          showStatus("Pickup location set. Click to set destination.", "info");
-        } else if (!window.destinationMarker) {
-          // Set destination
-          window.destinationMarker = L.marker([coords.lat, coords.lng], {
-            icon: createCustomMarker("destination", "D"),
-          })
-            .addTo(window.map)
-            .bindPopup("Destination");
-
-          updateAddress("destination", coords);
-          calculateRoute();
-          showStatus("Destination set. Route calculated!", "success");
-        } else {
-          // Reset and set new pickup
-          clearMarkers();
-          window.pickupMarker = L.marker([coords.lat, coords.lng], {
-            icon: createCustomMarker("pickup", "P"),
-          })
-            .addTo(window.map)
-            .bindPopup("Pickup Location");
-
-          updateAddress("pickup", coords);
-          document.getElementById("destination").value = "";
-          hideRouteInfo();
-          showStatus("New pickup location set.", "info");
-        }
+        showStatus(`Searching ${vehicle} rides...`, "info");
+        // Mock geocoding: random coords near Coimbatore
+        const pickupLat = 11.0168 + Math.random() * 0.02 - 0.01;
+        const pickupLng = 76.9558 + Math.random() * 0.02 - 0.01;
+        const destLat = 11.0168 + Math.random() * 0.02 - 0.01;
+        const destLng = 76.9558 + Math.random() * 0.02 - 0.01;
+        if (pickupMarker) map.removeLayer(pickupMarker);
+        if (destinationMarker) map.removeLayer(destinationMarker);
+        pickupMarker = createMarker(pickupLat, pickupLng, "pickup", "P");
+        destinationMarker = createMarker(destLat, destLng, "destination", "D");
+        map.fitBounds(
+          [
+            [pickupLat, pickupLng],
+            [destLat, destLng],
+          ],
+          { padding: [50, 50] },
+        );
+        showDriversOnMap(vehicle);
       }
 
-      // Custom marker creation
-      function createCustomMarker(type, text = "") {
-        const markerHtml = `<div class="custom-marker ${type}-marker">${text}</div>`;
-        return L.divIcon({
-          html: markerHtml,
-          className: "custom-div-icon",
-          iconSize: [30, 30],
-          iconAnchor: [15, 15],
-        });
-      }
-
-      // Update address display
-      function updateAddress(type, coords) {
-        const input = document.getElementById(type);
-        input.value = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
-      }
-
-      // Get user's current location
       function useMyLocation() {
         if (navigator.geolocation) {
-          showStatus("Getting your location...", "info");
           navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const coords = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-              };
-
-              if (window.map && mapLoaded) {
-                // Remove existing pickup marker
-                if (window.pickupMarker) {
-                  window.map.removeLayer(window.pickupMarker);
-                }
-
-                // Add new pickup marker
-                window.pickupMarker = L.marker([coords.lat, coords.lng], {
-                  icon: createCustomMarker("pickup", "P"),
-                })
-                  .addTo(window.map)
-                  .bindPopup("Pickup Location")
-                  .openPopup();
-
-                window.map.setView([coords.lat, coords.lng], 15);
-              }
-
-              updateAddress("pickup", coords);
-              showStatus(
-                "Location found! Click on map to set destination.",
-                "success",
-              );
+            (pos) => {
+              const lat = pos.coords.latitude;
+              const lng = pos.coords.longitude;
+              document.getElementById("pickup").value = "Current Location";
+              if (pickupMarker) map.removeLayer(pickupMarker);
+              pickupMarker = createMarker(lat, lng, "pickup", "P");
+              map.setView([lat, lng], 14);
             },
-            (error) => {
-              let errorMsg = "Unable to get location. ";
-              switch (error.code) {
-                case error.PERMISSION_DENIED:
-                  errorMsg += "Location access denied.";
-                  break;
-                case error.POSITION_UNAVAILABLE:
-                  errorMsg += "Location information unavailable.";
-                  break;
-                case error.TIMEOUT:
-                  errorMsg += "Location request timed out.";
-                  break;
-              }
-              showStatus(errorMsg, "error");
-            },
+            () => showStatus("Could not fetch location", "error"),
           );
-        } else {
-          showStatus("Geolocation is not supported by this browser.", "error");
-        }
+        } else showStatus("Geolocation not supported", "error");
       }
 
-      // Clear all markers and route
-      function clearMarkers() {
-        if (!window.map) return;
-
-        if (window.pickupMarker) window.map.removeLayer(window.pickupMarker);
-        if (window.destinationMarker)
-          window.map.removeLayer(window.destinationMarker);
-        if (window.routePolyline) window.map.removeLayer(window.routePolyline);
-
-        if (window.driversMarkers) {
-          window.driversMarkers.forEach((marker) =>
-            window.map.removeLayer(marker),
-          );
-        }
-
-        window.pickupMarker = null;
-        window.destinationMarker = null;
-        window.routePolyline = null;
-        window.driversMarkers = [];
-        window.selectedDriver = null;
-      }
-
-      // Find nearby drivers using Flask backend
-      async function findRide() {
-        // Check if we have coordinates (either from map or manual input)
-        let pickupCoords = null;
-
-        if (window.pickupMarker && mapLoaded) {
-          pickupCoords = window.pickupMarker.getLatLng();
-        } else {
-          // Try to parse coordinates from input
-          const pickupInput = document.getElementById("pickup").value;
-          if (pickupInput.includes(",")) {
-            const parts = pickupInput.split(",");
-            if (parts.length === 2) {
-              const lat = parseFloat(parts[0].trim());
-              const lng = parseFloat(parts[1].trim());
-              if (!isNaN(lat) && !isNaN(lng)) {
-                pickupCoords = { lat, lng };
-              }
-            }
-          }
-        }
-
-        if (!pickupCoords) {
-          showStatus("Please set pickup location first!", "error");
-          return;
-        }
-
-        const findBtn = document.getElementById("findRideBtn");
-        findBtn.disabled = true;
-        findBtn.innerHTML =
-          '<i class="fas fa-spinner fa-spin"></i> Finding Drivers...';
-
-        try {
-          const response = await fetch("/find_drivers", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              pickup_lat: pickupCoords.lat,
-              pickup_lng: pickupCoords.lng,
-            }),
+      function showDriversOnMap(vehicleType) {
+        // remove old
+        driversMarkers.forEach((m) => map.removeLayer(m));
+        driversMarkers = [];
+        const drivers = [];
+        for (let i = 0; i < 5; i++) {
+          drivers.push({
+            name: "Driver" + (i + 1),
+            lat: 11.0168 + Math.random() * 0.02 - 0.01,
+            lng: 76.9558 + Math.random() * 0.02 - 0.01,
+            vehicle: vehicleType,
+            eta: Math.floor(Math.random() * 10 + 2),
           });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          const drivers = await response.json();
-
-          if (drivers.length === 0) {
-            showStatus(
-              "No drivers available in your area. Please try again later.",
-              "warning",
-            );
-          } else {
-            displayDrivers(drivers);
-            showDriversOnMap(drivers);
-            showStatus(`Found ${drivers.length} driver(s) nearby!`, "success");
-          }
-        } catch (error) {
-          console.error("Error finding drivers:", error);
-          showStatus(
-            "Error connecting to server. Using demo data for now.",
-            "warning",
-          );
-
-          // Fallback demo data
-          const demoDrivers = [
-            {
-              id: 1,
-              name: "Arun",
-              lat: 11.0183,
-              lng: 76.9725,
-              vehicle: "bike",
-              distance_to_pickup: 1.2,
-              eta: 4,
-            },
-            {
-              id: 2,
-              name: "Priya",
-              lat: 11.0055,
-              lng: 77.0362,
-              vehicle: "auto",
-              distance_to_pickup: 2.1,
-              eta: 6,
-            },
-            {
-              id: 3,
-              name: "Kumar",
-              lat: 11.0172,
-              lng: 76.9558,
-              vehicle: "car",
-              distance_to_pickup: 0.8,
-              eta: 3,
-            },
-          ];
-          displayDrivers(demoDrivers);
-          showDriversOnMap(demoDrivers);
-        } finally {
-          findBtn.disabled = false;
-          findBtn.innerHTML = '<i class="fas fa-search"></i> Find Ride';
         }
-      }
-
-      // Display drivers list
-      function displayDrivers(drivers) {
         const driversList = document.getElementById("driversList");
-        driversList.innerHTML =
-          "<h3><i class='fas fa-users'></i> Available Drivers</h3>";
-
-        if (drivers.length === 0) {
-          driversList.innerHTML +=
-            "<p class='loading'>No drivers available</p>";
-          return;
-        }
-
-        drivers.forEach((driver) => {
+        driversList.innerHTML = "";
+        drivers.forEach((driver, index) => {
           const card = document.createElement("div");
           card.className = "driver-card";
-
-          const vehicleIcon = getVehicleIcon(driver.vehicle);
-
-          card.innerHTML = `
-            <div class="driver-info">
-              <div class="driver-details">
-                <h4>${driver.name}</h4>
-                <p class="distance">${driver.distance_to_pickup} km away</p>
-                <div class="eta">ETA: ${driver.eta} mins</div>
-              </div>
-              <div class="driver-meta">
-                <i class="fas ${vehicleIcon} vehicle-icon ${driver.vehicle}"></i>
-                <p>${driver.vehicle.charAt(0).toUpperCase() + driver.vehicle.slice(1)}</p>
-              </div>
-            </div>
-          `;
-
-          card.onclick = () => selectDriver(driver, card);
-          driversList.appendChild(card);
-        });
-
-        // Add book button
-        const bookButton = document.createElement("button");
-        bookButton.className = "btn btn-warning";
-        bookButton.id = "bookBtn";
-        bookButton.innerHTML =
-          '<i class="fas fa-car"></i> Book Selected Driver';
-        bookButton.style.display = "none";
-        bookButton.onclick = bookRide;
-        driversList.appendChild(bookButton);
-      }
-
-      // Get vehicle icon
-      function getVehicleIcon(vehicle) {
-        const icons = {
-          bike: "fa-motorcycle",
-          auto: "fa-taxi",
-          car: "fa-car",
-        };
-        return icons[vehicle] || "fa-car";
-      }
-
-      // Show drivers on map
-      function showDriversOnMap(drivers) {
-        if (!window.map || !mapLoaded) return;
-
-        // Clear existing driver markers
-        if (window.driversMarkers) {
-          window.driversMarkers.forEach((marker) =>
-            window.map.removeLayer(marker),
-          );
-        }
-        window.driversMarkers = [];
-
-        drivers.forEach((driver, index) => {
-          const vehicleIcons = {
-            bike: "🏍️",
-            auto: "🛺",
-            car: "🚗",
+          card.innerHTML = `<div class="driver-info"><div class="driver-details"><h4>${driver.name}</h4><p>Vehicle: ${driver.vehicle}</p></div><div class="driver-meta"><div class="eta">ETA: ${driver.eta} min</div></div></div>`;
+          card.onclick = () => {
+            selectDriver(driver, card);
           };
-
-          const marker = L.marker([driver.lat, driver.lng], {
-            icon: createCustomMarker(
-              `driver ${driver.vehicle}`,
-              vehicleIcons[driver.vehicle],
-            ),
-          }).addTo(window.map).bindPopup(`
-              <div style="text-align: center;">
-                <h4>${driver.name}</h4>
-                <p><strong>${driver.vehicle.toUpperCase()}</strong></p>
-                <p>${driver.distance_to_pickup} km away</p>
-                <p>ETA: ${driver.eta} mins</p>
-              </div>
-            `);
-
-          window.driversMarkers.push(marker);
+          driversList.appendChild(card);
+          const marker = createMarker(
+            driver.lat,
+            driver.lng,
+            "driver",
+            index + 1,
+          );
+          driversMarkers.push(marker);
         });
       }
 
-      // Select a driver
-      function selectDriver(driver, cardElement) {
-        window.selectedDriver = driver;
-
-        // Remove selection from all cards
-        document.querySelectorAll(".driver-card").forEach((card) => {
-          card.classList.remove("selected");
-        });
-
-        // Add selection to clicked card
-        cardElement.classList.add("selected");
-
-        // Show book button
-        const bookBtn = document.getElementById("bookBtn");
-        if (bookBtn) {
-          bookBtn.style.display = "block";
-          bookBtn.innerHTML = `<i class="fas fa-car"></i> Book ${driver.name}`;
-        }
-
-        showStatus(
-          `${driver.name} selected (${driver.vehicle.toUpperCase()})`,
-          "info",
-        );
+      function selectDriver(driver, card) {
+        document
+          .querySelectorAll(".driver-card")
+          .forEach((c) => c.classList.remove("selected"));
+        card.classList.add("selected");
+        selectedDriver = driver;
+        showStatus(`Selected ${driver.name}`, "success");
+        bookRide();
       }
 
-      // Book the selected ride
-      async function bookRide() {
-        if (!window.selectedDriver) {
-          showStatus("Please select a driver first!", "error");
-          return;
-        }
+      async function getRoute(start, end) {
+        // start/end are {lat,lng}
+        const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.code !== "Ok") throw new Error("Route not found");
+        return data.routes[0].geometry.coordinates.map((c) => ({
+          lat: c[1],
+          lng: c[0],
+        }));
+      }
 
-        const bookBtn = document.getElementById("bookBtn");
-        bookBtn.disabled = true;
-        bookBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Booking...';
-
-        try {
-          const response = await fetch("/book_ride", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              driver_id: window.selectedDriver.id,
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+      async function moveDriverAlongRoute(driverMarker, routeCoords, callback) {
+        let i = 0;
+        const total = routeCoords.length;
+        const interval = setInterval(() => {
+          if (i >= total) {
+            clearInterval(interval);
+            if (callback) callback();
+            return;
           }
+          driverMarker.setLatLng([routeCoords[i].lat, routeCoords[i].lng]);
+          i++;
+        }, 100); // adjust speed here
+      }
 
-          const result = await response.json();
+      async function bookRide() {
+        if (!selectedDriver) return;
+        showStatus(
+          `Ride booked with ${selectedDriver.name}. ETA: ${selectedDriver.eta} mins`,
+          "success",
+        );
 
-          if (result.status === "success") {
+        // Fetch route to pickup first
+        const pickupRoute = await getRoute(
+          { lat: selectedDriver.lat, lng: selectedDriver.lng },
+          pickupMarker.getLatLng(),
+        );
+        await moveDriverAlongRoute(driversMarkers[0], pickupRoute, async () => {
+          showStatus(
+            `${selectedDriver.name} reached pickup! Heading to destination...`,
+            "info",
+          );
+          // Route to destination
+          const destRoute = await getRoute(
+            pickupMarker.getLatLng(),
+            destinationMarker.getLatLng(),
+          );
+          await moveDriverAlongRoute(driversMarkers[0], destRoute, () => {
             showStatus(
-              `Ride booked successfully! Booking ID: ${result.booking_id}`,
+              `${selectedDriver.name} reached destination! Ride complete.`,
               "success",
             );
-            showBookingConfirmation(result);
-          } else {
-            throw new Error(result.message || "Booking failed");
-          }
-        } catch (error) {
-          console.error("Error booking ride:", error);
-          showStatus(
-            "Error connecting to server. Demo booking successful!",
-            "warning",
-          );
-          showBookingConfirmation({
-            booking_id: `DEMO${window.selectedDriver.id}123`,
           });
-        }
+        });
       }
 
-      // Show booking confirmation
-      function showBookingConfirmation(result) {
-        const driversList = document.getElementById("driversList");
-        driversList.innerHTML = `
-          <div style="text-align: center; padding: 20px; background: #e8f5e8; border-radius: 8px;">
-            <h3 style="color: #4caf50; margin-bottom: 10px;">
-              <i class="fas fa-check-circle"></i> Ride Booked!
-            </h3>
-            <p><strong>Driver:</strong> ${window.selectedDriver.name}</p>
-            <p><strong>Vehicle:</strong> ${window.selectedDriver.vehicle.toUpperCase()}</p>
-            <p><strong>Booking ID:</strong> ${result.booking_id}</p>
-            <p><strong>ETA:</strong> ${window.selectedDriver.eta} minutes</p>
-            <button class="btn" onclick="location.reload()" style="margin-top: 15px;">
-              <i class="fas fa-plus"></i> Book Another Ride
-            </button>
-          </div>
-        `;
-      }
-
-      // Calculate route
-      async function calculateRoute() {
-        // Implementation for route calculation
-        // Similar to previous version but with null checks
-        if (!window.pickupMarker || !window.destinationMarker) return;
-
-        try {
-          const pickupCoords = window.pickupMarker.getLatLng();
-          const destCoords = window.destinationMarker.getLatLng();
-          const vehicleType = document.getElementById("vehicleType").value;
-
-          const response = await fetch("/calculate_route", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              pickup_lat: pickupCoords.lat,
-              pickup_lng: pickupCoords.lng,
-              dest_lat: destCoords.lat,
-              dest_lng: destCoords.lng,
-              vehicle_type: vehicleType,
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+      function animateMarker(marker, targetLatLng, callback) {
+        const frames = 50,
+          duration = 3000;
+        const startLatLng = marker.getLatLng();
+        let count = 0;
+        const deltaLat = (targetLatLng.lat - startLatLng.lat) / frames;
+        const deltaLng = (targetLatLng.lng - startLatLng.lng) / frames;
+        const interval = setInterval(() => {
+          if (count >= frames) {
+            clearInterval(interval);
+            if (callback) callback();
+            return;
           }
-
-          const routeData = await response.json();
-
-          // Update route info
-          document.getElementById("distance").textContent = routeData.distance;
-          document.getElementById("duration").textContent = routeData.duration;
-          document.getElementById("fare").textContent = routeData.fare;
-          document.getElementById("routeInfo").classList.add("show");
-
-          // Draw route on map
-          drawRoute(routeData.route);
-        } catch (error) {
-          console.error("Error calculating route:", error);
-          showStatus("Using offline route calculation.", "warning");
-
-          // Fallback: simple straight line calculation
-          const pickup = window.pickupMarker.getLatLng();
-          const dest = window.destinationMarker.getLatLng();
-          const distance = calculateDistanceHaversine(
-            pickup.lat,
-            pickup.lng,
-            dest.lat,
-            dest.lng,
-          );
-          const vehicleType = document.getElementById("vehicleType").value;
-          const fare = calculateFareSimple(distance, vehicleType);
-
-          document.getElementById("distance").textContent = distance.toFixed(2);
-          document.getElementById("duration").textContent = Math.round(
-            distance * 4,
-          );
-          document.getElementById("fare").textContent = fare;
-          document.getElementById("routeInfo").classList.add("show");
-
-          // Draw simple line if map is available
-          if (window.map && mapLoaded) {
-            if (window.routePolyline)
-              window.map.removeLayer(window.routePolyline);
-            window.routePolyline = L.polyline(
-              [
-                [pickup.lat, pickup.lng],
-                [dest.lat, dest.lng],
-              ],
-              {
-                color: "#3b82f6",
-                weight: 5,
-              },
-            ).addTo(window.map);
-
-            // Fit map to show route
-            window.map.fitBounds(window.routePolyline.getBounds(), {
-              padding: [20, 20],
-            });
-          }
-        }
+          marker.setLatLng([
+            startLatLng.lat + deltaLat * count,
+            startLatLng.lng + deltaLng * count,
+          ]);
+          count++;
+        }, duration / frames);
       }
 
-      // Draw route on map
-      function drawRoute(routeCoordinates) {
-        if (!window.map || !mapLoaded) return;
-
-        if (window.routePolyline) window.map.removeLayer(window.routePolyline);
-
-        if (routeCoordinates && routeCoordinates.length > 0) {
-          window.routePolyline = L.polyline(routeCoordinates, {
-            color: "#3b82f6",
-            weight: 5,
-          }).addTo(window.map);
-
-          // Fit map to show entire route
-          window.map.fitBounds(window.routePolyline.getBounds(), {
-            padding: [20, 20],
-          });
-        }
-      }
-
-      // Simple distance calculation (Haversine formula)
-      function calculateDistanceHaversine(lat1, lng1, lat2, lng2) {
-        const R = 6371; // Earth's radius in km
-        const dLat = ((lat2 - lat1) * Math.PI) / 180;
-        const dLng = ((lng2 - lng1) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((lat1 * Math.PI) / 180) *
-            Math.cos((lat2 * Math.PI) / 180) *
-            Math.sin(dLng / 2) *
-            Math.sin(dLng / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-      }
-
-      // Simple fare calculation
-      function calculateFareSimple(distance, vehicleType) {
-        const baseFare = { bike: 15, auto: 25, car: 35 };
-        const perKmRate = { bike: 8, auto: 12, car: 15 };
-        return Math.round(
-          baseFare[vehicleType] + distance * perKmRate[vehicleType],
-        );
-      }
-
-      // Hide route info
-      function hideRouteInfo() {
-        document.getElementById("routeInfo").classList.remove("show");
-      }
-
-      // Show status messages
-      function showStatus(message, type = "info") {
-        const statusEl = document.getElementById("status");
-        statusEl.className = `status ${type}`;
-        statusEl.textContent = message;
-        statusEl.style.display = "block";
-
-        // Auto-hide after 4 seconds
-        setTimeout(() => {
-          statusEl.style.display = "none";
-        }, 4000);
-      }
-
-      // Update fare when vehicle type changes
-      document.getElementById("vehicleType").addEventListener("change", () => {
-        if (window.pickupMarker && window.destinationMarker && mapLoaded) {
-          calculateRoute();
-        }
-      });
-
-      // Initialize the app when page loads
-      document.addEventListener("DOMContentLoaded", function () {
-        initializeApp();
-      });
+      window.onload = initializeMap;
     </script>
   </body>
 </html>
