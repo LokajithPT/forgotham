@@ -45,6 +45,9 @@ def calculate_fare(distance, vehicle_type):
 def index():
     return render_template('index.html')
 
+@app.route('/hehe')
+def hehe():
+    return render_template('hehe.html')
 @app.route('/find_drivers', methods=['POST'])
 def find_drivers():
     data = request.get_json()

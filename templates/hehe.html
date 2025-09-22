@@ -39,19 +39,10 @@
         text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
       }
       .main-content {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 1fr 2fr;
         gap: 20px;
-        height: 75vh;
-      }
-      .map-container {
-        background: white;
-        height: 60%;
-        min-height: 400px;
-        border-radius: 15px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        overflow: hidden;
-        position: relative;
+        height: 70vh;
       }
       .controls-panel {
         background: white;
@@ -62,11 +53,18 @@
         opacity: 0;
         transition: opacity 0.5s;
         pointer-events: none;
-        height: 40%;
       }
       .controls-panel.ready {
         opacity: 1;
         pointer-events: auto;
+      }
+      .map-container {
+        background: white;
+        height: calc(70vh -20px);
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+        position: relative;
       }
       #map {
         height: 100%;
@@ -285,13 +283,13 @@
       }
       @media (max-width: 768px) {
         .main-content {
+          grid-template-columns: 1fr;
           height: auto;
         }
         .map-container {
           height: 50vh;
-        }
-        .controls-panel {
-          height: auto;
+          margin-bottom: 20px;
+          order: -1;
         }
       }
     </style>
@@ -303,14 +301,6 @@
         <p>Your ride is just a click away!</p>
       </div>
       <div class="main-content">
-        <div class="map-container">
-          <div class="map-loading" id="mapLoading">
-            <div class="loading-spinner"></div>
-            <h3>Loading Map...</h3>
-            <p>Please wait while we load your interactive map</p>
-          </div>
-          <div id="map"></div>
-        </div>
         <div class="controls-panel">
           <div class="input-group">
             <label for="pickup"
@@ -352,6 +342,14 @@
           </div>
           <div class="drivers-list" id="driversList"></div>
         </div>
+        <div class="map-container">
+          <div class="map-loading" id="mapLoading">
+            <div class="loading-spinner"></div>
+            <h3>Loading Map...</h3>
+            <p>Please wait while we load your interactive map</p>
+          </div>
+          <div id="map"></div>
+        </div>
       </div>
     </div>
     <div class="status" id="status"></div>
@@ -373,25 +371,20 @@
       }
 
       function initializeMap() {
-        // Wait for the container to be properly sized
-        setTimeout(() => {
-          map = L.map("map").setView([11.0168, 76.9558], 12);
-          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution: "© OpenStreetMap",
-            maxZoom: 18,
-          }).addTo(map);
-
-          // Force map to recognize its container size
-          setTimeout(() => {
-            map.invalidateSize();
-            document.getElementById("mapLoading").style.display = "none";
-            document.querySelector(".controls-panel").classList.add("ready");
-            showStatus(
-              "Map loaded! You can now choose pickup and destination.",
-              "success",
-            );
-          }, 100);
-        }, 100);
+        map = L.map("map").setView([11.0168, 76.9558], 12);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap",
+          maxZoom: 18,
+        }).addTo(map);
+        map.whenReady(() => {
+          document.getElementById("mapLoading").style.display = "none";
+          document.querySelector(".controls-panel").classList.add("ready");
+          map.invalidateSize();
+          showStatus(
+            "Map loaded! You can now choose pickup and destination.",
+            "success",
+          );
+        });
       }
 
       function createMarker(lat, lng, type = "pickup", label = "") {
@@ -555,17 +548,7 @@
         });
       }
 
-      window.onload = () => {
-        // Ensure DOM is fully loaded before initializing map
-        initializeMap();
-
-        // Add window resize handler to fix map bounds
-        window.addEventListener("resize", () => {
-          if (map) {
-            setTimeout(() => map.invalidateSize(), 100);
-          }
-        });
-      };
+      window.onload = initializeMap;
     </script>
   </body>
 </html>
