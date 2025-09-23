@@ -71,6 +71,10 @@
       #map {
         height: 100%;
         width: 100%;
+        cursor: crosshair;
+      }
+      #map.normal-cursor {
+        cursor: auto;
       }
       .map-loading {
         position: absolute;
@@ -126,6 +130,11 @@
       .input-group select:focus {
         outline: none;
         border-color: #667eea;
+      }
+      .input-group input.selecting-location {
+        border-color: #4caf50;
+        background-color: #f0fff0;
+        box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
       }
       .btn {
         background: linear-gradient(45deg, #667eea, #764ba2);
@@ -283,6 +292,31 @@
       .driver-marker.car {
         background-color: #2196f3;
       }
+      .location-selector-hint {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(76, 175, 80, 0.9);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        z-index: 1000;
+        display: none;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          opacity: 0.8;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.8;
+        }
+      }
       @media (max-width: 768px) {
         .main-content {
           height: auto;
@@ -309,6 +343,9 @@
             <h3>Loading Map...</h3>
             <p>Please wait while we load your interactive map</p>
           </div>
+          <div class="location-selector-hint" id="locationHint">
+            Click on the map to select location
+          </div>
           <div id="map"></div>
         </div>
         <div class="controls-panel">
@@ -316,7 +353,12 @@
             <label for="pickup"
               ><i class="fas fa-map-marker-alt"></i> Pickup Location</label
             >
-            <input type="text" id="pickup" placeholder="Enter pickup address" />
+            <input
+              type="text"
+              id="pickup"
+              placeholder="Click here, then click on map to select pickup location"
+              readonly
+            />
           </div>
           <div class="input-group">
             <label for="destination"
@@ -325,7 +367,8 @@
             <input
               type="text"
               id="destination"
-              placeholder="Enter destination"
+              placeholder="Click here, then click on map to select destination"
+              readonly
             />
           </div>
           <div class="input-group">
@@ -362,7 +405,9 @@
         pickupMarker,
         destinationMarker,
         driversMarkers = [],
-        selectedDriver = null;
+        selectedDriver = null,
+        isSelectingLocation = false,
+        activeLocationInput = null;
 
       function showStatus(msg, type = "info") {
         const el = document.getElementById("status");
@@ -381,17 +426,113 @@
             maxZoom: 18,
           }).addTo(map);
 
+          // Add click event listener to map for location selection
+          map.on("click", onMapClick);
+
           // Force map to recognize its container size
           setTimeout(() => {
             map.invalidateSize();
             document.getElementById("mapLoading").style.display = "none";
             document.querySelector(".controls-panel").classList.add("ready");
+            setupLocationInputs();
             showStatus(
-              "Map loaded! You can now choose pickup and destination.",
+              "Map loaded! Click on location inputs, then click on map to select locations.",
               "success",
             );
           }, 100);
         }, 100);
+      }
+
+      function setupLocationInputs() {
+        const pickupInput = document.getElementById("pickup");
+        const destinationInput = document.getElementById("destination");
+
+        pickupInput.addEventListener("click", () =>
+          startLocationSelection("pickup"),
+        );
+        destinationInput.addEventListener("click", () =>
+          startLocationSelection("destination"),
+        );
+
+        // Add click outside to cancel selection
+        document.addEventListener("click", (e) => {
+          if (!e.target.closest("#map") && !e.target.closest(".input-group")) {
+            cancelLocationSelection();
+          }
+        });
+      }
+
+      function startLocationSelection(inputType) {
+        if (isSelectingLocation) return;
+
+        isSelectingLocation = true;
+        activeLocationInput = inputType;
+
+        const input = document.getElementById(inputType);
+        input.classList.add("selecting-location");
+
+        const mapElement = document.getElementById("map");
+        mapElement.classList.remove("normal-cursor");
+
+        const hint = document.getElementById("locationHint");
+        hint.style.display = "block";
+        hint.textContent = `Click on the map to select ${inputType} location`;
+
+        showStatus(`Click on the map to select ${inputType} location`, "info");
+      }
+
+      function cancelLocationSelection() {
+        if (!isSelectingLocation) return;
+
+        isSelectingLocation = false;
+
+        if (activeLocationInput) {
+          const input = document.getElementById(activeLocationInput);
+          input.classList.remove("selecting-location");
+        }
+
+        activeLocationInput = null;
+
+        const mapElement = document.getElementById("map");
+        mapElement.classList.add("normal-cursor");
+
+        const hint = document.getElementById("locationHint");
+        hint.style.display = "none";
+      }
+
+      function onMapClick(e) {
+        if (!isSelectingLocation || !activeLocationInput) return;
+
+        const lat = e.latlng.lat.toFixed(6);
+        const lng = e.latlng.lng.toFixed(6);
+
+        const input = document.getElementById(activeLocationInput);
+        input.value = `${lat}, ${lng}`;
+
+        // Create or update marker
+        if (activeLocationInput === "pickup") {
+          if (pickupMarker) map.removeLayer(pickupMarker);
+          pickupMarker = createMarker(lat, lng, "pickup", "P");
+        } else if (activeLocationInput === "destination") {
+          if (destinationMarker) map.removeLayer(destinationMarker);
+          destinationMarker = createMarker(lat, lng, "destination", "D");
+        }
+
+        showStatus(
+          `${activeLocationInput} location selected: ${lat}, ${lng}`,
+          "success",
+        );
+
+        // Cancel selection mode
+        cancelLocationSelection();
+
+        // If both locations are set, fit bounds to show both
+        if (pickupMarker && destinationMarker) {
+          map.fitBounds(
+            [pickupMarker.getLatLng(), destinationMarker.getLatLng()],
+            { padding: [50, 50] },
+          );
+        }
       }
 
       function createMarker(lat, lng, type = "pickup", label = "") {
@@ -414,31 +555,36 @@
         const pickup = document.getElementById("pickup").value.trim();
         const destination = document.getElementById("destination").value.trim();
         const vehicle = document.getElementById("vehicleType").value;
+
         if (!pickup || !destination) {
-          showStatus("Enter both pickup and destination!", "error");
+          showStatus(
+            "Please select both pickup and destination locations!",
+            "error",
+          );
           return;
         }
+
+        if (!pickupMarker || !destinationMarker) {
+          showStatus("Please select locations using the map!", "error");
+          return;
+        }
+
         showStatus(`Searching ${vehicle} rides...`, "info");
-
-        const pickupLat = 11.0168 + Math.random() * 0.02 - 0.01;
-        const pickupLng = 76.9558 + Math.random() * 0.02 - 0.01;
-        const destLat = 11.0168 + Math.random() * 0.02 - 0.01;
-        const destLng = 76.9558 + Math.random() * 0.02 - 0.01;
-
-        if (pickupMarker) map.removeLayer(pickupMarker);
-        if (destinationMarker) map.removeLayer(destinationMarker);
-
-        pickupMarker = createMarker(pickupLat, pickupLng, "pickup", "P");
-        destinationMarker = createMarker(destLat, destLng, "destination", "D");
-        map.fitBounds(
-          [
-            [pickupLat, pickupLng],
-            [destLat, destLng],
-          ],
-          { padding: [50, 50] },
-        );
-
         showDriversOnMap(vehicle);
+
+        // Calculate and show route info
+        const pickupCoords = pickupMarker.getLatLng();
+        const destCoords = destinationMarker.getLatLng();
+        const distance = pickupCoords.distanceTo(destCoords) / 1000; // Convert to km
+        const duration = Math.ceil(distance * 3); // Rough estimate: 3 mins per km
+
+        const rates = { bike: 8, auto: 12, car: 15 };
+        const fare = Math.ceil(distance * rates[vehicle]);
+
+        document.getElementById("distance").textContent = distance.toFixed(1);
+        document.getElementById("duration").textContent = duration;
+        document.getElementById("fare").textContent = fare;
+        document.getElementById("routeInfo").classList.add("show");
       }
 
       function useMyLocation() {
@@ -447,10 +593,12 @@
             (pos) => {
               const lat = pos.coords.latitude;
               const lng = pos.coords.longitude;
-              document.getElementById("pickup").value = "Current Location";
+              document.getElementById("pickup").value =
+                `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
               if (pickupMarker) map.removeLayer(pickupMarker);
               pickupMarker = createMarker(lat, lng, "pickup", "P");
               map.setView([lat, lng], 14);
+              showStatus("Current location set as pickup", "success");
             },
             () => showStatus("Could not fetch location", "error"),
           );
